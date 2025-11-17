@@ -15,16 +15,6 @@ from datetime import datetime, timezone
 BROKERS: str = "kafka:9092"
 CLIENT_ID: str = "log-forge-sim"   # 프로젝트명에 맞춤
 
-# 서비스별 토픽 맵 + error/DLQ (DLQ는 선택)
-TOPICS: Dict[str, str] = {
-    "auth":    "logs.auth",
-    "order":   "logs.order",
-    "payment": "logs.payment",
-    "notify":  "logs.notify",
-    "error":   "logs.error",   # 에러 복제 발행용
-    "dlq":     "dlq.logs",     # 파싱 실패 등 사후 처리용(선택)
-}
-
 # (선택) 보안 설정. 기본은 None(로컬)
 SECURITY: Dict[str, Any] | None = None
 # 예시)
@@ -38,9 +28,6 @@ SECURITY: Dict[str, Any] | None = None
 # ===== 전송 스위치 =====
 # 기본: stdout → Fluent Bit가 수집해서 Kafka로 보냄
 SINK: str = os.environ.get("SIM_SINK", "stdout").lower()  # stdout | kafka
-
-def _ts() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 # ----- stdout 전송용 더미 Producer (confluent_kafka.Producer와 인터페이스 유사) -----
 class _StdoutProducer:
@@ -59,48 +46,15 @@ class _StdoutProducer:
         on_delivery=None,
         **kwargs: Any,
     ) -> None:
-        # value를 문자열이면 그대로, JSON문자열이면 json.loads로 객체 변환 (value가 '객체'가 됨)
-
-        # value 직렬화 (dict -> JSON, str -> 그대로, bytes -> UTF-8 가정)
-        # if isinstance(value, dict):
-        #     payload_str = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-        # elif isinstance(value, bytes):
-        #     payload_str = value.decode("utf-8", errors="replace")
-        # elif value is None:
-        #     payload_str = ""
-        # else:
-        #     payload_str = str(value)
-
-        # 주의: 최소 침습을 위해 envelope 추가 없이 "원본 payload"만 출력
-        # line = payload_str
-
-        # 필요 시 토픽/키/타임스탬프를 함께 남기고 싶다면 아래 주석 해제
-        # value 직렬화 준비
+        # value를 JSON 문자열로 변환
         if isinstance(value, dict):
-            payload = value                       # dict는 그대로 담음
+            line = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         elif isinstance(value, bytes):
-            payload = value.decode("utf-8", errors="replace")
+            line = value.decode("utf-8", errors="replace")
         elif value is None:
-            payload = ""
+            line = ""
         else:
-            payload = str(value)
-
-        try:
-            payload = json.loads(payload)  # 문자열이면 객체로 변환
-        except Exception:
-            pass  # JSON 아니면 그대로 문자열 유지
-            
-        # ✅ envelope 켜기: ts/topic/key/value 를 하나의 JSON 라인으로 출력
-        line = json.dumps(
-            {
-                "ts": _ts(),
-                "topic": topic,
-                "key": (key.decode() if isinstance(key, (bytes, bytearray)) else key),
-                "value": payload,
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+            line = str(value)
 
         sys.stdout.write(line + "\n")
         sys.stdout.flush()
@@ -120,16 +74,6 @@ class _StdoutProducer:
             sys.stdout.flush()
         except Exception:
             pass
-
-
-def get_topics() -> Dict[str, str]:
-    """
-    Kafka 토픽 맵을 반환한다.
-
-    Returns:
-        Dict[str, str]: {"auth":"logs.auth", ... "error":"logs.error", "dlq":"dlq.logs"}
-    """
-    return TOPICS.copy()
 
 
 def get_producer_config() -> Dict[str, Any]:

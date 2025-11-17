@@ -130,7 +130,7 @@ services:
     # command: ["python", "-m", "simulator.main", "--profile", "simulator/profiles/baseline.yaml", "--duration", "60"]
     command: ["python", "-m", "simulator.main", "--profile", "simulator/profiles/baseline.yaml"]
     logging:
-      driver: json-file
+      driver: local
       options: { max-size: "10m", max-file: "5" }
 
 networks:

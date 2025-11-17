@@ -10,11 +10,11 @@
 
 from __future__ import annotations
 from typing import Dict, Any, List, Tuple
-import json
+import copy
 import math
 import time
 
-from simulator.core.kafka import get_topics, get_producer_config
+from simulator.core.kafka import get_producer_config
 from simulator.core.timeband import load_bands, current_hour_kst, pick_multiplier
 from simulator.core.stats import Stats
 from simulator.core.signalz import GracefulKiller
@@ -104,7 +104,6 @@ def run(
     mode = profile.get("weight_mode", "uniform")
 
     # 프로듀서 준비
-    topics = get_topics()
     stats = Stats()
     killer = GracefulKiller()
     prod = None
@@ -149,22 +148,21 @@ def run(
                 # 너무 시끄러우니 샘플 몇 개만 출력
                 print(f"[dry-run] {svc} n={len(batch)} example={batch[0] if batch else None}")
             else:
-                topic = topics.get(svc, f"logs.{svc}")
                 for ev in batch:
                     ok, errs = schema.validate(ev)
                     if not ok:
-                        # 보정 시도
                         ev = schema.normalize(ev)
-                        # 그래도 중요한 프로젝트면 errs를 로그/에러토픽/DLQ로 보냄
-                        # producer.produce(prod, topic=topics["dlq"], key=..., value=...errs...)
 
                     key = ev.get("rid", "")
-                    val = json.dumps(ev, ensure_ascii=False)
-                    producer.produce(prod, topic=topic, key=key, value=val)
+                    # stdout producer는 topic/key를 사용하지 않지만 형식상 전달
+                    producer.produce(prod, topic=svc, key=key, value=ev)
 
                     # 에러 복제 발행 옵션
                     if replicate_error_to_topic and ev.get("lvl") == "E":
-                        producer.produce(prod, topic=topics["error"], key=key, value=val)
+                        # 에러 복제본 생성: svc 필드를 "error"로 교체
+                        err_ev = copy.deepcopy(ev)
+                        err_ev["svc"] = "error"
+                        producer.produce(prod, topic="error", key=key, value=err_ev)
 
             stats.add_sent(svc, len(batch))
 

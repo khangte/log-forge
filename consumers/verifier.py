@@ -34,13 +34,12 @@ except Exception:
 
 # 프로젝트 내부 모듈
 from simulator.core.kafka import BROKERS
-from simulator.core.kafka import get_topics as _get_topics
 from simulator import schema
 
 
 def _default_topics() -> List[str]:
-    t = _get_topics()
-    return [t["auth"], t["order"], t["payment"], t["notify"]]
+    # get_topics 함수가 제거되었으므로, 기본 토픽을 하드코딩
+    return ["logs.auth", "logs.order", "logs.payment", "logs.notify"]
 
 
 def build_args() -> argparse.Namespace:
@@ -66,7 +65,7 @@ def main() -> None:
     ns = build_args()
     topics = [t.strip() for t in ns.topics.split(",") if t.strip()]
     if ns.errors:
-        topics.append(_get_topics()["error"])
+        topics.append("logs.error") # get_topics 함수가 제거되었으므로 하드코딩
 
     conf = {
         "bootstrap.servers": BROKERS,
@@ -92,7 +91,7 @@ def main() -> None:
 
             if msg is None:
                 # 주기적으로 통계 출력
-                if now - last_stats >= ns.stats_interval:
+                if now - last_stats >= ns.stats-interval:
                     print(f"[stats] total={total} bad={bad}")
                     last_stats = now
                 continue
@@ -131,7 +130,7 @@ def main() -> None:
                 break
 
             # 통계 주기
-            if now - last_stats >= ns.stats_interval:
+            if now - last_stats >= ns.stats-interval:
                 print(f"[stats] total={total} bad={bad}")
                 last_stats = now
 
